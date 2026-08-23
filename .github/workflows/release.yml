@@ -59,6 +59,7 @@ jobs:
           gh release create "v$TAG" \
             --title "Camera Position Setter $TAG" \
             --generate-notes \
+            --clobber \
             camera_position_setter.py
 
       - name: Trigger moleditpy-plugins registry update
