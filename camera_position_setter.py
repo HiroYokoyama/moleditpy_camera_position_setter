@@ -308,7 +308,13 @@ def calculate_selected_atoms_centroid(
 class SavePresetDialog(QDialog):
     """Modal dialog asking for a preset name and checkboxes for global / project scope."""
 
-    def __init__(self, default_name: str = "View 1", parent: Optional[QWidget] = None):
+    def __init__(
+        self,
+        default_name: str = "View 1",
+        default_global: bool = True,
+        default_project: bool = True,
+        parent: Optional[QWidget] = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Save Viewpoint")
         self.resize(360, 180)
@@ -324,9 +330,9 @@ class SavePresetDialog(QDialog):
         group_scope = QGroupBox("Save Scope")
         scope_layout = QVBoxLayout(group_scope)
         self.chk_global = QCheckBox("Save to Global Presets (available in all sessions)")
-        self.chk_global.setChecked(True)
+        self.chk_global.setChecked(default_global)
         self.chk_project = QCheckBox("Save to Current Project (saved in .pmeprj file)")
-        self.chk_project.setChecked(True)
+        self.chk_project.setChecked(default_project)
         scope_layout.addWidget(self.chk_global)
         scope_layout.addWidget(self.chk_project)
         layout.addWidget(group_scope)
@@ -539,7 +545,11 @@ class CameraPositionDialog(QDialog):
         grid_n.addWidget(QLabel("Step Angle:"), 0, 0)
         self.combo_step_deg = QComboBox()
         self.combo_step_deg.addItems(["5°", "15°", "45°", "90°"])
-        self.combo_step_deg.setCurrentIndex(1)
+        init_step = 1
+        if hasattr(self.context, "get_setting"):
+            init_step = int(self.context.get_setting("nudge_step_deg_index", 1))
+        self.combo_step_deg.setCurrentIndex(init_step)
+        self.combo_step_deg.currentIndexChanged.connect(self._on_step_deg_changed)
         grid_n.addWidget(self.combo_step_deg, 0, 1)
 
         self.btn_yaw_minus = QPushButton("Yaw - (Left)")
@@ -587,7 +597,11 @@ class CameraPositionDialog(QDialog):
             "Global Presets (All Files)",
             "Project Bookmarks (This File)",
         ])
-        self.combo_filter.currentIndexChanged.connect(self._refresh_presets_list_ui)
+        init_filter = 0
+        if hasattr(self.context, "get_setting"):
+            init_filter = int(self.context.get_setting("filter_index", 0))
+        self.combo_filter.setCurrentIndex(init_filter)
+        self.combo_filter.currentIndexChanged.connect(self._on_filter_changed)
         h_filter.addWidget(self.combo_filter)
         h_filter.addStretch()
         layout.addLayout(h_filter)
@@ -625,10 +639,20 @@ class CameraPositionDialog(QDialog):
     def _setup_bottom_bar(self, main_layout: QVBoxLayout) -> None:
         """Build bottom action and clipboard bar."""
         h_opts = QHBoxLayout()
+        init_live = True
+        init_smooth = True
+        if hasattr(self.context, "get_setting"):
+            init_live = bool(self.context.get_setting("live_preview", True))
+            init_smooth = bool(self.context.get_setting("smooth_transition", True))
+
         self.chk_live = QCheckBox("Live Preview")
-        self.chk_live.setChecked(True)
+        self.chk_live.setChecked(init_live)
+        self.chk_live.toggled.connect(self._on_live_toggled)
+
         self.chk_smooth = QCheckBox("Smooth Transition")
-        self.chk_smooth.setChecked(True)
+        self.chk_smooth.setChecked(init_smooth)
+        self.chk_smooth.toggled.connect(self._on_smooth_toggled)
+
         self.btn_copy_clip = QPushButton("Copy (JSON)")
         self.btn_paste_clip = QPushButton("Paste")
         self.btn_copy_clip.clicked.connect(self.copy_to_clipboard)
@@ -1113,6 +1137,27 @@ class CameraPositionDialog(QDialog):
 
         self.apply_to_view(force=False)
 
+    def _on_live_toggled(self, checked: bool) -> None:
+        """Persist live preview checkbox toggle."""
+        if hasattr(self.context, "set_setting"):
+            self.context.set_setting("live_preview", checked)
+
+    def _on_smooth_toggled(self, checked: bool) -> None:
+        """Persist smooth transition checkbox toggle."""
+        if hasattr(self.context, "set_setting"):
+            self.context.set_setting("smooth_transition", checked)
+
+    def _on_step_deg_changed(self, idx: int) -> None:
+        """Persist orbital step angle selection."""
+        if hasattr(self.context, "set_setting"):
+            self.context.set_setting("nudge_step_deg_index", idx)
+
+    def _on_filter_changed(self, idx: int) -> None:
+        """Persist viewpoint filter dropdown index and refresh list."""
+        if hasattr(self.context, "set_setting"):
+            self.context.set_setting("filter_index", idx)
+        self._refresh_presets_list_ui()
+
     # -----------------------------------------------------------------------
     # Bookmarks / Preset Management (Separated Global vs Project Scopes)
     # -----------------------------------------------------------------------
@@ -1239,11 +1284,26 @@ class CameraPositionDialog(QDialog):
     def save_current_preset(self) -> None:
         """Prompt user with scope checkboxes (Global vs Project) and save."""
         default_name = f"View {len(self._presets) + 1}"
-        dlg = SavePresetDialog(default_name=default_name, parent=self)
+        default_global = True
+        default_project = True
+        if hasattr(self.context, "get_setting"):
+            default_global = bool(self.context.get_setting("save_scope_global", True))
+            default_project = bool(self.context.get_setting("save_scope_project", True))
+
+        dlg = SavePresetDialog(
+            default_name=default_name,
+            default_global=default_global,
+            default_project=default_project,
+            parent=self,
+        )
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
         name, is_global, is_project = dlg.get_result()
+        if hasattr(self.context, "set_setting"):
+            self.context.set_setting("save_scope_global", is_global)
+            self.context.set_setting("save_scope_project", is_project)
+
         state = self.get_current_ui_state()
         state["name"] = name
         state["is_global"] = is_global

@@ -201,9 +201,13 @@ def _install_qt_stubs():
         def __init__(self, text=""):
             self._checked = False
             self._text = text
+            self.toggled = _QSignal()
 
         def setChecked(self, c):
+            old = self._checked
             self._checked = bool(c)
+            if old != self._checked:
+                self.toggled.emit(self._checked)
 
         def isChecked(self):
             return self._checked

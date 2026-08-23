@@ -129,6 +129,19 @@ class TestCoverageEdgeCases(unittest.TestCase):
         state = self.dialog.get_current_ui_state()
         self.assertAlmostEqual(state["distance"], 25.0, places=2)
 
+    def test_ui_settings_persistence(self):
+        self.dialog._on_live_toggled(False)
+        self.context.set_setting.assert_called_with("live_preview", False)
+
+        self.dialog._on_smooth_toggled(False)
+        self.context.set_setting.assert_called_with("smooth_transition", False)
+
+        self.dialog._on_step_deg_changed(2)
+        self.context.set_setting.assert_called_with("nudge_step_deg_index", 2)
+
+        self.dialog._on_filter_changed(1)
+        self.context.set_setting.assert_called_with("filter_index", 1)
+
     def test_close_event(self):
         event = MagicMock()
         self.dialog._anim_timer.start()
