@@ -101,6 +101,10 @@ def _install_qt_stubs():
                 slot(*args)
 
     class _QDialog:
+        class DialogCode:
+            Accepted = 1
+            Rejected = 0
+
         def __init__(self, parent=None):
             self._parent = parent
             self._window_title = ""
@@ -122,6 +126,25 @@ def _install_qt_stubs():
 
         def closeEvent(self, event):
             pass
+
+        def exec(self):
+            return self.DialogCode.Accepted
+
+        def accept(self):
+            pass
+
+        def reject(self):
+            pass
+
+    class _QLineEdit:
+        def __init__(self, text=""):
+            self._text = text
+
+        def text(self):
+            return self._text
+
+        def setText(self, t):
+            self._text = t
 
     class _QDoubleSpinBox:
         def __init__(self, *args, **kwargs):
@@ -250,6 +273,7 @@ def _install_qt_stubs():
             return "Test Preset", True
 
     qt_widgets.QDialog = _QDialog
+    qt_widgets.QLineEdit = _QLineEdit
     qt_widgets.QDoubleSpinBox = _QDoubleSpinBox
     qt_widgets.QComboBox = _QComboBox
     qt_widgets.QCheckBox = _QCheckBox
@@ -261,7 +285,7 @@ def _install_qt_stubs():
 
     for name in [
         "QVBoxLayout", "QHBoxLayout", "QGridLayout", "QGroupBox",
-        "QLabel", "QScrollArea", "QWidget", "QTabWidget"
+        "QLabel", "QWidget", "QTabWidget"
     ]:
         setattr(qt_widgets, name, lambda *args, **kwargs: MagicMock())
 
@@ -330,7 +354,6 @@ class TestMathFunctions(unittest.TestCase):
         pos = (10.0, 0.0, 0.0)
         fp = (0.0, 0.0, 0.0)
         up = (0.0, 0.0, 1.0)
-        # Azimuth 90 deg step: orbits camera around up vector
         new_pos, new_up = cam_mod.orbit_step(pos, fp, up, "azimuth", 90.0)
         self.assertAlmostEqual(new_pos[0], 0.0)
         self.assertAlmostEqual(new_pos[1], -10.0)
@@ -340,7 +363,6 @@ class TestMathFunctions(unittest.TestCase):
         pos = (0.0, -10.0, 0.0)
         fp = (0.0, 0.0, 0.0)
         up = (0.0, 0.0, 1.0)
-        # Elevation 90 deg step
         new_pos, new_up = cam_mod.orbit_step(pos, fp, up, "elevation", 90.0)
         self.assertAlmostEqual(new_pos[0], 0.0)
         self.assertAlmostEqual(new_pos[1], 0.0)
@@ -350,7 +372,6 @@ class TestMathFunctions(unittest.TestCase):
         pos = (0.0, -10.0, 0.0)
         fp = (0.0, 0.0, 0.0)
         up = (0.0, 0.0, 1.0)
-        # Roll 90 deg step
         new_pos, new_up = cam_mod.orbit_step(pos, fp, up, "roll", 90.0)
         self.assertEqual(new_pos, pos)
         self.assertAlmostEqual(new_up[0], -1.0)
@@ -398,6 +419,31 @@ class TestCentroidCalculations(unittest.TestCase):
 
     def test_selected_atoms_centroid_empty(self):
         self.assertIsNone(cam_mod.calculate_selected_atoms_centroid(None, []))
+
+
+class TestSavePresetDialog(unittest.TestCase):
+    def test_dialog_result_and_validation(self):
+        dlg = cam_mod.SavePresetDialog(default_name="Custom View")
+        self.assertEqual(dlg.name_edit.text(), "Custom View")
+        self.assertTrue(dlg.chk_global.isChecked())
+        self.assertTrue(dlg.chk_project.isChecked())
+
+        res = dlg.get_result()
+        self.assertEqual(res, ("Custom View", True, True))
+
+        # Test empty name validation
+        dlg.name_edit.setText("")
+        with patch.object(dlg, "accept") as mock_accept:
+            dlg._on_save_clicked()
+            mock_accept.assert_not_called()
+
+        # Test no scope checked
+        dlg.name_edit.setText("Valid Name")
+        dlg.chk_global.setChecked(False)
+        dlg.chk_project.setChecked(False)
+        with patch.object(dlg, "accept") as mock_accept:
+            dlg._on_save_clicked()
+            mock_accept.assert_not_called()
 
 
 class TestDialogFeatures(unittest.TestCase):
@@ -463,26 +509,42 @@ class TestDialogFeatures(unittest.TestCase):
         state2 = self.dialog.get_current_ui_state()
         self.assertAlmostEqual(state2["distance"], state["distance"] * 0.5, places=3)
 
-    def test_presets_crud(self):
+    def test_presets_crud_and_scopes(self):
         self.dialog.set_ui_state({
             "position": (1.0, 2.0, 3.0),
             "focal_point": (0.0, 0.0, 0.0),
             "view_up": (0.0, 0.0, 1.0),
         })
-        self.dialog.save_current_preset()
+        with patch.object(cam_mod.SavePresetDialog, "exec", return_value=1):
+            with patch.object(
+                cam_mod.SavePresetDialog, "get_result", return_value=("Test Preset", True, False)
+            ):
+                self.dialog.save_current_preset()
+
         presets = self.dialog.get_all_presets()
         self.assertEqual(len(presets), 1)
         self.assertEqual(presets[0]["name"], "Test Preset")
+        self.assertTrue(presets[0]["is_global"])
+        self.assertFalse(presets[0]["is_project"])
+
+        # Filter check
+        self.dialog.combo_filter.setCurrentIndex(1)  # Global only
+        self.assertEqual(len(self.dialog.get_global_presets()), 1)
+        self.assertEqual(len(self.dialog.get_project_presets()), 0)
+
+        # Apply preset
+        self.dialog.list_presets.setCurrentRow(0)
+        self.dialog.apply_selected_preset()
+        self.assertEqual(self.dialog.spin_pos_x.value(), 1.0)
 
         # Update preset
         self.dialog.spin_pos_x.setValue(9.0)
-        self.dialog.list_presets.setCurrentRow(0)
         self.dialog.update_selected_preset()
         self.assertEqual(self.dialog.get_all_presets()[0]["position"][0], 9.0)
 
-        # Apply preset
-        self.dialog.apply_selected_preset()
-        self.assertEqual(self.dialog.spin_pos_x.value(), 9.0)
+        # Rename preset
+        self.dialog.rename_selected_preset()
+        self.assertEqual(self.dialog.get_all_presets()[0]["name"], "Test Preset")
 
         # Delete preset
         self.dialog.delete_selected_preset()
@@ -500,7 +562,6 @@ class TestDialogFeatures(unittest.TestCase):
         clip_text = QGuiApplication.clipboard().text()
         self.assertIn('"position"', clip_text)
 
-        # Reset UI then paste
         self.dialog.spin_pos_x.setValue(0.0)
         self.dialog.paste_from_clipboard()
         self.assertEqual(self.dialog.spin_pos_x.value(), 10.0)
@@ -521,11 +582,9 @@ class TestDialogFeatures(unittest.TestCase):
         self.dialog.start_smooth_transition(target)
         self.assertTrue(self.dialog._anim_timer.isActive())
 
-        # Advance frame
         self.dialog._on_anim_step()
         self.assertGreater(self.dialog._anim_step, 0)
 
-        # Complete animation
         for _ in range(self.dialog._anim_total_steps + 1):
             self.dialog._on_anim_step()
         self.assertFalse(self.dialog._anim_timer.isActive())
@@ -535,7 +594,9 @@ class TestPersistenceHandlers(unittest.TestCase):
     def test_save_load_reset_cycle(self):
         context = MagicMock()
         fake_win = MagicMock()
-        fake_win.get_all_presets.return_value = [{"name": "P1", "position": (1, 2, 3)}]
+        fake_win.get_project_presets.return_value = [
+            {"name": "P1", "position": (1, 2, 3), "is_project": True, "is_global": False}
+        ]
         context.get_window.return_value = fake_win
 
         saved = cam_mod._on_save_project(context)
@@ -543,11 +604,11 @@ class TestPersistenceHandlers(unittest.TestCase):
 
         # Load
         cam_mod._on_load_project(context, saved)
-        fake_win.load_presets.assert_called_with(saved["bookmarks"])
+        fake_win.merge_project_presets.assert_called_once()
 
         # Reset
         cam_mod._on_document_reset(context)
-        fake_win.load_presets.assert_called_with([])
+        fake_win.clear_project_presets.assert_called_once()
 
 
 if __name__ == "__main__":

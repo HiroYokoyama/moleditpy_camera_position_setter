@@ -63,20 +63,17 @@ class TestCoverageEdgeCases(unittest.TestCase):
             self.assertEqual(up, (0.0, 0.0, 1.0))
 
     def test_parse_clipboard_formats(self):
-        # JSON format
         j_text = '{"position": [1, 2, 3], "focal_point": [0, 0, 0]}'
         p1 = cam_mod.CameraPositionDialog._parse_clipboard_camera_text(j_text)
         self.assertIsNotNone(p1)
         self.assertEqual(p1["position"], [1, 2, 3])
 
-        # PyVista list of tuples style
         pv_text = '[(1, 2, 3), (0, 0, 0), (0, 0, 1)]'
         p2 = cam_mod.CameraPositionDialog._parse_clipboard_camera_text(pv_text)
         self.assertIsNotNone(p2)
         self.assertEqual(p2["position"], (1, 2, 3))
         self.assertEqual(p2["focal_point"], (0, 0, 0))
 
-        # Invalid text
         self.assertIsNone(cam_mod.CameraPositionDialog._parse_clipboard_camera_text("not a camera string"))
 
     def test_center_on_molecule_no_mol(self):
@@ -90,17 +87,36 @@ class TestCoverageEdgeCases(unittest.TestCase):
         self.dialog.center_on_selection()
         self.context.show_status_message.assert_called_with("Please select one or more atoms first.")
 
-    def test_rename_and_clear_presets(self):
-        self.dialog.load_presets([
-            {"name": "P1", "position": (1, 1, 1), "focal_point": (0, 0, 0), "view_up": (0, 0, 1), "view_angle": 30.0, "parallel": False},
-            {"name": "P2", "position": (2, 2, 2), "focal_point": (0, 0, 0), "view_up": (0, 0, 1), "view_angle": 30.0, "parallel": False},
+    def test_merge_and_clear_project_presets(self):
+        self.dialog._presets = [
+            {"name": "P1", "position": (1, 1, 1), "focal_point": (0, 0, 0), "view_up": (0, 0, 1), "is_global": True, "is_project": False},
+        ]
+        self.dialog.merge_project_presets([
+            {"name": "P1", "position": (1, 1, 1), "focal_point": (0, 0, 0), "view_up": (0, 0, 1), "is_project": True},
+            {"name": "P2", "position": (2, 2, 2), "focal_point": (0, 0, 0), "view_up": (0, 0, 1), "is_project": True},
         ])
-        self.dialog.list_presets.setCurrentRow(0)
-        self.dialog.rename_selected_preset()
-        self.assertEqual(self.dialog.get_all_presets()[0]["name"], "Test Preset")
+        self.assertEqual(len(self.dialog.get_all_presets()), 2)
+        self.assertEqual(len(self.dialog.get_global_presets()), 1)
+        self.assertEqual(len(self.dialog.get_project_presets()), 2)
+
+        # Clear project bookmarks
+        self.dialog.clear_project_presets()
+        self.assertEqual(len(self.dialog.get_all_presets()), 1)
+        self.assertTrue(self.dialog.get_all_presets()[0]["is_global"])
+
+    def test_clear_filtered_presets(self):
+        self.dialog._presets = [
+            {"name": "P1", "position": (1, 1, 1), "focal_point": (0, 0, 0), "view_up": (0, 0, 1), "is_global": True, "is_project": False},
+            {"name": "P2", "position": (2, 2, 2), "focal_point": (0, 0, 0), "view_up": (0, 0, 1), "is_global": False, "is_project": True},
+        ]
+        self.dialog.combo_filter.setCurrentIndex(1)  # Clear global only
+        self.dialog.clear_filtered_presets()
+        self.assertEqual(len(self.dialog.get_global_presets()), 0)
+        self.assertEqual(len(self.dialog.get_project_presets()), 1)
 
         # Clear all
-        self.dialog.clear_all_presets()
+        self.dialog.combo_filter.setCurrentIndex(0)
+        self.dialog.clear_filtered_presets()
         self.assertEqual(len(self.dialog.get_all_presets()), 0)
 
     def test_distance_spinbox_manual_edit(self):

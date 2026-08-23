@@ -4,7 +4,8 @@ Camera Position Setter Plugin for MoleditPy.
 Provides precise 3D camera control, standard axis views (+X, -X, +Y, -Y, +Z, -Z,
 Isometric), exact numerical coordinate setters, target centering (molecule /
 selected atoms), orbital step adjustments (nudge), viewpoint bookmarks with
-session and project persistence, clipboard copy/paste, and smooth animated transitions.
+separated global presets and project bookmarks (with save checkboxes),
+clipboard copy/paste, and smooth animated transitions.
 
 Source code, README, and full license (GNU GPL):
     https://github.com/HiroYokoyama/moleditpy_camera_position_setter
@@ -14,7 +15,7 @@ see the LICENSE file in the repository above for the full terms.
 
 # pylint: disable=too-many-lines,too-many-instance-attributes,too-many-public-methods
 # pylint: disable=too-many-locals,too-many-statements,attribute-defined-outside-init
-# pylint: disable=no-name-in-module,broad-exception-caught
+# pylint: disable=too-few-public-methods,no-name-in-module,broad-exception-caught
 
 import ast
 import json
@@ -32,6 +33,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QLabel,
+    QLineEdit,
     QDoubleSpinBox,
     QComboBox,
     QPushButton,
@@ -48,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Camera Position Setter"
-PLUGIN_VERSION = "1.0.0"
+PLUGIN_VERSION = "1.1.0"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Precise 3D camera controller, axis view aligner, and viewpoint manager for MoleditPy."
@@ -60,8 +62,8 @@ PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=3.0.0, <5.0.0"
 PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.9, <3.15"
 PLUGIN_SUPPORTED_OS = ["Windows", "macOS", "Linux", "WSL"]
 
-# Global cache for session presets and project data
-_PROJECT_PRESETS: List[Dict[str, Any]] = []
+# Global cache for active project bookmarks
+_PROJECT_BOOKMARKS: List[Dict[str, Any]] = []
 
 
 def initialize(context) -> None:
@@ -98,33 +100,40 @@ def show_camera_dialog(context) -> None:
 def _on_save_project(context) -> Dict[str, Any]:
     """Save project-specific camera bookmarks into the project file."""
     win = context.get_window("camera_position_setter_dialog")
-    if win and hasattr(win, "get_all_presets"):
-        presets = win.get_all_presets()
+    if win and hasattr(win, "get_project_presets"):
+        presets = win.get_project_presets()
     else:
-        presets = list(_PROJECT_PRESETS)
+        presets = [p for p in _PROJECT_BOOKMARKS if p.get("is_project", True)]
     return {"bookmarks": presets}
 
 
 def _on_load_project(context, data: Any) -> None:
     """Restore project-specific camera bookmarks when opening a project."""
-    global _PROJECT_PRESETS  # pylint: disable=global-statement
+    global _PROJECT_BOOKMARKS  # pylint: disable=global-statement
     if isinstance(data, dict) and "bookmarks" in data and isinstance(data["bookmarks"], list):
-        _PROJECT_PRESETS = list(data["bookmarks"])
+        loaded = []
+        for p in data["bookmarks"]:
+            p_copy = dict(p)
+            p_copy["is_project"] = True
+            if "is_global" not in p_copy:
+                p_copy["is_global"] = False
+            loaded.append(p_copy)
+        _PROJECT_BOOKMARKS = loaded
     else:
-        _PROJECT_PRESETS = []
+        _PROJECT_BOOKMARKS = []
 
     win = context.get_window("camera_position_setter_dialog")
-    if win and hasattr(win, "load_presets"):
-        win.load_presets(_PROJECT_PRESETS)
+    if win and hasattr(win, "merge_project_presets"):
+        win.merge_project_presets(_PROJECT_BOOKMARKS)
 
 
 def _on_document_reset(context) -> None:
-    """Clear project presets on File > New."""
-    global _PROJECT_PRESETS  # pylint: disable=global-statement
-    _PROJECT_PRESETS = []
+    """Clear project-specific bookmarks on File > New."""
+    global _PROJECT_BOOKMARKS  # pylint: disable=global-statement
+    _PROJECT_BOOKMARKS = []
     win = context.get_window("camera_position_setter_dialog")
-    if win and hasattr(win, "load_presets"):
-        win.load_presets([])
+    if win and hasattr(win, "clear_project_presets"):
+        win.clear_project_presets()
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +301,71 @@ def calculate_selected_atoms_centroid(
 
 
 # ---------------------------------------------------------------------------
-# Dialog Implementation
+# Save Preset Modal Dialog with Scope Checkboxes
+# ---------------------------------------------------------------------------
+
+
+class SavePresetDialog(QDialog):
+    """Modal dialog asking for a preset name and checkboxes for global / project scope."""
+
+    def __init__(self, default_name: str = "View 1", parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setWindowTitle("Save Viewpoint")
+        self.resize(360, 180)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        layout.addWidget(QLabel("Viewpoint Preset Name:"))
+        self.name_edit = QLineEdit(default_name)
+        layout.addWidget(self.name_edit)
+
+        # Checkboxes for separating global presets and project bookmarks
+        group_scope = QGroupBox("Save Scope")
+        scope_layout = QVBoxLayout(group_scope)
+        self.chk_global = QCheckBox("Save to Global Presets (available in all sessions)")
+        self.chk_global.setChecked(True)
+        self.chk_project = QCheckBox("Save to Current Project (saved in .pmeprj file)")
+        self.chk_project.setChecked(True)
+        scope_layout.addWidget(self.chk_global)
+        scope_layout.addWidget(self.chk_project)
+        layout.addWidget(group_scope)
+
+        btn_layout = QHBoxLayout()
+        self.btn_save = QPushButton("Save")
+        self.btn_cancel = QPushButton("Cancel")
+        self.btn_save.clicked.connect(self._on_save_clicked)
+        self.btn_cancel.clicked.connect(self.reject)
+        btn_layout.addWidget(self.btn_save)
+        btn_layout.addWidget(self.btn_cancel)
+        layout.addLayout(btn_layout)
+
+    def _on_save_clicked(self) -> None:
+        """Validate input before accepting."""
+        name = self.name_edit.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Invalid Name", "Please enter a name for the preset.")
+            return
+        if not self.chk_global.isChecked() and not self.chk_project.isChecked():
+            QMessageBox.warning(
+                self,
+                "No Scope Selected",
+                "Please check at least one option: Global Presets or Current Project.",
+            )
+            return
+        self.accept()
+
+    def get_result(self) -> Tuple[str, bool, bool]:
+        """Return (name, is_global, is_project)."""
+        return (
+            self.name_edit.text().strip(),
+            self.chk_global.isChecked(),
+            self.chk_project.isChecked(),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Main Camera Dialog Implementation
 # ---------------------------------------------------------------------------
 
 
@@ -303,7 +376,7 @@ class CameraPositionDialog(QDialog):
         super().__init__(parent)
         self.context = context
         self.setWindowTitle("Camera Position Setter")
-        self.resize(520, 680)
+        self.resize(520, 700)
 
         self._block_signals = False
         self._presets: List[Dict[str, Any]] = []
@@ -500,14 +573,27 @@ class CameraPositionDialog(QDialog):
         return tab_coords
 
     def _setup_presets_tab(self) -> QWidget:
-        """Build the saved presets and bookmarks tab."""
+        """Build the saved presets and bookmarks tab with category filtering."""
         tab_presets = QWidget()
         layout = QVBoxLayout(tab_presets)
         layout.setSpacing(8)
 
+        # Filter bar
+        h_filter = QHBoxLayout()
+        h_filter.addWidget(QLabel("Show Viewpoints:"))
+        self.combo_filter = QComboBox()
+        self.combo_filter.addItems([
+            "All Viewpoints",
+            "Global Presets (All Files)",
+            "Project Bookmarks (This File)",
+        ])
+        self.combo_filter.currentIndexChanged.connect(self._refresh_presets_list_ui)
+        h_filter.addWidget(self.combo_filter)
+        h_filter.addStretch()
+        layout.addLayout(h_filter)
+
         self.list_presets = QListWidget()
         self.list_presets.itemDoubleClicked.connect(self._on_preset_double_clicked)
-        layout.addWidget(QLabel("Saved Viewpoints / Bookmarks:"))
         layout.addWidget(self.list_presets)
 
         h_btn1 = QHBoxLayout()
@@ -522,7 +608,7 @@ class CameraPositionDialog(QDialog):
         h_btn2 = QHBoxLayout()
         self.btn_rename_preset = QPushButton("Rename...")
         self.btn_delete_preset = QPushButton("Delete")
-        self.btn_clear_presets = QPushButton("Clear All")
+        self.btn_clear_presets = QPushButton("Clear Filtered")
         h_btn2.addWidget(self.btn_rename_preset)
         h_btn2.addWidget(self.btn_delete_preset)
         h_btn2.addWidget(self.btn_clear_presets)
@@ -533,7 +619,7 @@ class CameraPositionDialog(QDialog):
         self.btn_update_preset.clicked.connect(self.update_selected_preset)
         self.btn_rename_preset.clicked.connect(self.rename_selected_preset)
         self.btn_delete_preset.clicked.connect(self.delete_selected_preset)
-        self.btn_clear_presets.clicked.connect(self.clear_all_presets)
+        self.btn_clear_presets.clicked.connect(self.clear_filtered_presets)
         return tab_presets
 
     def _setup_bottom_bar(self, main_layout: QVBoxLayout) -> None:
@@ -799,7 +885,6 @@ class CameraPositionDialog(QDialog):
             self._apply_camera_state_direct(self._anim_target_state)
             return
 
-        # Cosine ease-in-out
         t = 0.5 * (1.0 - math.cos(math.pi * fraction))
 
         s_pos = np.array(self._anim_start_state["position"])
@@ -1029,117 +1114,227 @@ class CameraPositionDialog(QDialog):
         self.apply_to_view(force=False)
 
     # -----------------------------------------------------------------------
-    # Bookmarks / Preset Management
+    # Bookmarks / Preset Management (Separated Global vs Project Scopes)
     # -----------------------------------------------------------------------
 
     def _load_saved_presets(self) -> None:
-        """Load presets from context settings and project cache."""
+        """Load presets from context settings and active project cache."""
         presets = []
         if hasattr(self.context, "get_setting"):
             stored = self.context.get_setting("camera_presets", [])
             if isinstance(stored, list):
-                presets.extend(stored)
+                for p in stored:
+                    p_copy = dict(p)
+                    p_copy["is_global"] = True
+                    if "is_project" not in p_copy:
+                        p_copy["is_project"] = False
+                    presets.append(p_copy)
 
-        for p in _PROJECT_PRESETS:
-            if p not in presets:
-                presets.append(p)
+        for p in _PROJECT_BOOKMARKS:
+            match = next((x for x in presets if x.get("name") == p.get("name")), None)
+            if match:
+                match["is_project"] = True
+            else:
+                p_copy = dict(p)
+                p_copy["is_project"] = True
+                if "is_global" not in p_copy:
+                    p_copy["is_global"] = False
+                presets.append(p_copy)
 
-        self.load_presets(presets)
+        self._presets = presets
+        self._refresh_presets_list_ui()
 
-    def load_presets(self, presets: List[Dict[str, Any]]) -> None:
-        """Populate preset list UI from a list of preset dictionaries."""
-        self._presets = list(presets)
-        self.list_presets.clear()
+    def merge_project_presets(self, bookmarks: List[Dict[str, Any]]) -> None:
+        """Merge loaded project bookmarks into dialog without overriding globals."""
+        for p in bookmarks:
+            match = next((x for x in self._presets if x.get("name") == p.get("name")), None)
+            if match:
+                match["is_project"] = True
+            else:
+                p_copy = dict(p)
+                p_copy["is_project"] = True
+                if "is_global" not in p_copy:
+                    p_copy["is_global"] = False
+                self._presets.append(p_copy)
+        self._refresh_presets_list_ui()
+
+    def clear_project_presets(self) -> None:
+        """Clear project bookmarks on File > New, retaining global presets."""
+        remaining = []
         for p in self._presets:
-            name = p.get("name", "Untitled View")
-            item = QListWidgetItem(name)
-            self.list_presets.addItem(item)
+            if p.get("is_global", False):
+                p["is_project"] = False
+                remaining.append(p)
+        self._presets = remaining
+        self._refresh_presets_list_ui()
 
     def get_all_presets(self) -> List[Dict[str, Any]]:
-        """Return the current list of presets."""
+        """Return all viewpoints in memory."""
         return list(self._presets)
 
+    def get_global_presets(self) -> List[Dict[str, Any]]:
+        """Return viewpoints marked for global settings."""
+        return [p for p in self._presets if p.get("is_global", False)]
+
+    def get_project_presets(self) -> List[Dict[str, Any]]:
+        """Return viewpoints marked for project persistence."""
+        return [p for p in self._presets if p.get("is_project", False)]
+
+    def _refresh_presets_list_ui(self, *_args) -> None:
+        """Repaint list items filtered by the category dropdown."""
+        self.list_presets.clear()
+        filter_idx = self.combo_filter.currentIndex()
+
+        for p in self._presets:
+            is_glob = p.get("is_global", False)
+            is_proj = p.get("is_project", False)
+
+            if filter_idx == 1 and not is_glob:
+                continue
+            if filter_idx == 2 and not is_proj:
+                continue
+
+            tag = ""
+            if is_glob and is_proj:
+                tag = "[Global+Project] "
+            elif is_glob:
+                tag = "[Global] "
+            elif is_proj:
+                tag = "[Project] "
+
+            name = p.get("name", "Untitled View")
+            item = QListWidgetItem(f"{tag}{name}")
+            self.list_presets.addItem(item)
+
+    def _get_filtered_preset_at(self, visual_row: int) -> Optional[Dict[str, Any]]:
+        """Map visual row in list widget to actual preset dict."""
+        filter_idx = self.combo_filter.currentIndex()
+        visible = []
+        for p in self._presets:
+            is_glob = p.get("is_global", False)
+            is_proj = p.get("is_project", False)
+            if filter_idx == 1 and not is_glob:
+                continue
+            if filter_idx == 2 and not is_proj:
+                continue
+            visible.append(p)
+
+        if 0 <= visual_row < len(visible):
+            return visible[visual_row]
+        return None
+
     def _persist_presets(self) -> None:
-        """Save presets to context settings and project cache."""
-        global _PROJECT_PRESETS  # pylint: disable=global-statement
-        _PROJECT_PRESETS = list(self._presets)
+        """Write separated global presets to settings and project bookmarks to cache."""
+        global _PROJECT_BOOKMARKS  # pylint: disable=global-statement
+        globals_list = self.get_global_presets()
+        projects_list = self.get_project_presets()
+
+        _PROJECT_BOOKMARKS = projects_list
+
         if hasattr(self.context, "set_setting"):
-            self.context.set_setting("camera_presets", self._presets)
+            self.context.set_setting("camera_presets", globals_list)
         if hasattr(self.context, "mark_project_modified"):
             self.context.mark_project_modified()
 
     def save_current_preset(self) -> None:
-        """Prompt the user for a name and save the current view state."""
+        """Prompt user with scope checkboxes (Global vs Project) and save."""
         default_name = f"View {len(self._presets) + 1}"
-        name, ok = QInputDialog.getText(
-            self, "Save Viewpoint", "Enter preset name:", text=default_name
-        )
-        if not ok or not name.strip():
+        dlg = SavePresetDialog(default_name=default_name, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
+        name, is_global, is_project = dlg.get_result()
         state = self.get_current_ui_state()
-        state["name"] = name.strip()
-        self._presets.append(state)
-        self.list_presets.addItem(QListWidgetItem(state["name"]))
+        state["name"] = name
+        state["is_global"] = is_global
+        state["is_project"] = is_project
+
+        # Replace existing with same name or append
+        existing = next((x for x in self._presets if x.get("name") == name), None)
+        if existing:
+            existing.update(state)
+        else:
+            self._presets.append(state)
+
         self._persist_presets()
+        self._refresh_presets_list_ui()
 
     def apply_selected_preset(self) -> None:
         """Apply the currently selected viewpoint preset in the list."""
         row = self.list_presets.currentRow()
-        if 0 <= row < len(self._presets):
-            preset = self._presets[row]
+        preset = self._get_filtered_preset_at(row)
+        if preset:
             self.set_ui_state(preset)
             self.apply_to_view(force=True)
 
     def update_selected_preset(self) -> None:
         """Overwrite the selected preset with current camera values."""
         row = self.list_presets.currentRow()
-        if 0 <= row < len(self._presets):
-            name = self._presets[row].get("name", f"View {row + 1}")
+        preset = self._get_filtered_preset_at(row)
+        if preset:
+            name = preset.get("name", "View")
+            is_glob = preset.get("is_global", True)
+            is_proj = preset.get("is_project", True)
             state = self.get_current_ui_state()
             state["name"] = name
-            self._presets[row] = state
+            state["is_global"] = is_glob
+            state["is_project"] = is_proj
+            preset.update(state)
             self._persist_presets()
+            self._refresh_presets_list_ui()
             if hasattr(self.context, "show_status_message"):
-                self.context.show_status_message(f"Updated preset '{name}'.")
+                self.context.show_status_message(f"Updated viewpoint '{name}'.")
 
     def rename_selected_preset(self) -> None:
         """Rename the currently selected preset."""
         row = self.list_presets.currentRow()
-        if 0 <= row < len(self._presets):
-            old_name = self._presets[row].get("name", "")
+        preset = self._get_filtered_preset_at(row)
+        if preset:
+            old_name = preset.get("name", "")
             new_name, ok = QInputDialog.getText(
                 self, "Rename Preset", "New preset name:", text=old_name
             )
             if ok and new_name.strip():
-                self._presets[row]["name"] = new_name.strip()
-                item = self.list_presets.item(row)
-                if item:
-                    item.setText(new_name.strip())
+                preset["name"] = new_name.strip()
                 self._persist_presets()
+                self._refresh_presets_list_ui()
 
     def delete_selected_preset(self) -> None:
         """Delete the currently selected viewpoint preset."""
         row = self.list_presets.currentRow()
-        if 0 <= row < len(self._presets):
-            self._presets.pop(row)
-            self.list_presets.takeItem(row)
+        preset = self._get_filtered_preset_at(row)
+        if preset and preset in self._presets:
+            self._presets.remove(preset)
             self._persist_presets()
+            self._refresh_presets_list_ui()
 
-    def clear_all_presets(self) -> None:
-        """Clear all stored viewpoint presets after confirmation."""
+    def clear_filtered_presets(self) -> None:
+        """Clear viewpoints currently visible in the active filter."""
+        filter_idx = self.combo_filter.currentIndex()
         if not self._presets:
             return
+
+        desc = (
+            "all viewpoints"
+            if filter_idx == 0
+            else ("global presets" if filter_idx == 1 else "project bookmarks")
+        )
         ans = QMessageBox.question(
             self,
-            "Clear Presets",
-            "Are you sure you want to delete all saved camera viewpoints?",
+            "Clear Viewpoints",
+            f"Are you sure you want to delete {desc}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if ans == QMessageBox.StandardButton.Yes:
-            self._presets.clear()
-            self.list_presets.clear()
+            if filter_idx == 0:
+                self._presets.clear()
+            elif filter_idx == 1:
+                self._presets = [p for p in self._presets if not p.get("is_global", False)]
+            elif filter_idx == 2:
+                self._presets = [p for p in self._presets if not p.get("is_project", False)]
+
             self._persist_presets()
+            self._refresh_presets_list_ui()
 
     def _on_preset_double_clicked(self, _item: QListWidgetItem) -> None:
         """Double clicking a preset applies it immediately."""
