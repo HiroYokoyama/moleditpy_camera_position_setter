@@ -24,7 +24,7 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
-from PyQt6.QtCore import QCoreApplication, QTimer
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import (
     QDialog,
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Camera Position Setter"
-PLUGIN_VERSION = "1.1.0"
+PLUGIN_VERSION = "1.2.0"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Precise 3D camera controller, axis view aligner, and viewpoint manager for MoleditPy."
@@ -273,6 +273,41 @@ def calculate_molecule_centroid(mol) -> Optional[Tuple[float, float, float]]:
     except Exception as e:
         logger.debug("Failed to calculate molecule centroid: %s", e)
         return None
+
+
+def collect_selected_atom_indices(context) -> List[int]:
+    """
+    Atoms selected in the 3D viewport.
+
+    This deliberately ignores ``context.get_selected_atom_indices()``, which reports
+    only the 2D scene selection (``QGraphicsScene.selectedItems()``) and has no bearing
+    on what the user picked in the 3D view.
+
+    MoleditPy's own "3D Select" is ``Edit3DManager.selected_atoms_for_measurement`` --
+    the atoms clicked in the 3D viewport, drawn as red numbered labels. That is the
+    single source the host's ``DialogManager._get_preselected_atoms_3d()`` reads to
+    preselect atoms for every 3D dialog, so it is what this plugin follows.
+
+    ``selected_atoms_3d`` (the yellow translucent highlight spheres) is also unioned in
+    for completeness, but nothing in the current app writes to it -- ``Edit3DManager``
+    exposes ``toggle_atom_selection_3d()`` yet no caller invokes it.
+    """
+    mw = context.get_main_window() if hasattr(context, "get_main_window") else None
+    e3d = getattr(mw, "edit_3d_manager", None) if mw is not None else None
+    if e3d is None:
+        return []
+
+    indices: set = set()
+    for attr in ("selected_atoms_for_measurement", "selected_atoms_3d"):
+        picked = getattr(e3d, attr, None)
+        if not isinstance(picked, (set, list, tuple)):
+            continue
+        try:
+            indices.update(int(i) for i in picked)
+        except (TypeError, ValueError) as e:
+            logger.debug("Failed to read %s: %s", attr, e)
+
+    return sorted(indices)
 
 
 def calculate_selected_atoms_centroid(
@@ -933,7 +968,6 @@ class CameraPositionDialog(QDialog):
             "parallel": self._anim_target_state.get("parallel", False),
         }
         self._apply_camera_state_direct(step_state)
-        QCoreApplication.processEvents()
 
     # -----------------------------------------------------------------------
     # Interactive Features: Standard Views, Centering, Nudge, Distance
@@ -982,18 +1016,14 @@ class CameraPositionDialog(QDialog):
         self._translate_focal_point(centroid)
 
     def center_on_selection(self) -> None:
-        """Center camera focal point on selected atoms."""
+        """Center camera focal point on the atoms selected in the 3D viewport."""
         mol = getattr(self.context, "current_molecule", None)
-        sel = (
-            self.context.get_selected_atom_indices()
-            if hasattr(self.context, "get_selected_atom_indices")
-            else []
-        )
+        sel = collect_selected_atom_indices(self.context)
         centroid = calculate_selected_atoms_centroid(mol, sel)
         if centroid is None:
             if hasattr(self.context, "show_status_message"):
                 self.context.show_status_message(
-                    "Please select one or more atoms first."
+                    "Please select one or more atoms in the 3D view first."
                 )
             return
 
@@ -1225,19 +1255,25 @@ class CameraPositionDialog(QDialog):
         """Return viewpoints marked for project persistence."""
         return [p for p in self._presets if p.get("is_project", False)]
 
+    def _visible_presets(self) -> List[Dict[str, Any]]:
+        """Presets shown under the active filter, in list-widget row order."""
+        filter_idx = self.combo_filter.currentIndex()
+        visible = []
+        for p in self._presets:
+            if filter_idx == 1 and not p.get("is_global", False):
+                continue
+            if filter_idx == 2 and not p.get("is_project", False):
+                continue
+            visible.append(p)
+        return visible
+
     def _refresh_presets_list_ui(self, *_args) -> None:
         """Repaint list items filtered by the category dropdown."""
         self.list_presets.clear()
-        filter_idx = self.combo_filter.currentIndex()
 
-        for p in self._presets:
+        for p in self._visible_presets():
             is_glob = p.get("is_global", False)
             is_proj = p.get("is_project", False)
-
-            if filter_idx == 1 and not is_glob:
-                continue
-            if filter_idx == 2 and not is_proj:
-                continue
 
             tag = ""
             if is_glob and is_proj:
@@ -1253,17 +1289,7 @@ class CameraPositionDialog(QDialog):
 
     def _get_filtered_preset_at(self, visual_row: int) -> Optional[Dict[str, Any]]:
         """Map visual row in list widget to actual preset dict."""
-        filter_idx = self.combo_filter.currentIndex()
-        visible = []
-        for p in self._presets:
-            is_glob = p.get("is_global", False)
-            is_proj = p.get("is_project", False)
-            if filter_idx == 1 and not is_glob:
-                continue
-            if filter_idx == 2 and not is_proj:
-                continue
-            visible.append(p)
-
+        visible = self._visible_presets()
         if 0 <= visual_row < len(visible):
             return visible[visual_row]
         return None
@@ -1472,9 +1498,18 @@ class CameraPositionDialog(QDialog):
 
         return None
 
-    def closeEvent(self, event) -> None:  # pylint: disable=invalid-name
-        """Stop animations and clean up singleton slot."""
+    def _release(self) -> None:
+        """Stop the animation timer and free the singleton slot."""
         if self._anim_timer.isActive():
             self._anim_timer.stop()
         self.context.register_window("camera_position_setter_dialog", None)
+
+    def done(self, result: int) -> None:
+        """Esc closes a QDialog via reject() -> done(), never through closeEvent."""
+        self._release()
+        super().done(result)
+
+    def closeEvent(self, event) -> None:  # pylint: disable=invalid-name
+        """Stop animations and clean up singleton slot."""
+        self._release()
         super().closeEvent(event)

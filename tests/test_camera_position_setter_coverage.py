@@ -13,8 +13,14 @@ import unittest
 from unittest.mock import MagicMock, patch
 import numpy as np
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), "..")))
-import camera_position_setter as cam_mod
+
+# Installs the Qt stubs as an import side effect; without it this module builds real
+# QWidgets with no QApplication and aborts the interpreter when run on its own.
+import test_camera_position_setter  # noqa: F401,E402  pylint: disable=unused-import
+
+import camera_position_setter as cam_mod  # noqa: E402
 
 
 class TestCoverageEdgeCases(unittest.TestCase):
@@ -84,8 +90,87 @@ class TestCoverageEdgeCases(unittest.TestCase):
     def test_center_on_selection_no_selection(self):
         self.context.current_molecule = MagicMock()
         self.context.get_selected_atom_indices.return_value = []
+        self.context.get_main_window.return_value = None
         self.dialog.center_on_selection()
-        self.context.show_status_message.assert_called_with("Please select one or more atoms first.")
+        self.context.show_status_message.assert_called_with(
+            "Please select one or more atoms in the 3D view first."
+        )
+
+    def test_center_on_selection_uses_3d_viewport_selection(self):
+        # get_selected_atom_indices() only reports the 2D scene; a real user
+        # picking atoms in the 3D viewport (yellow highlight) never touches it.
+        mol = MagicMock()
+        mol.GetNumConformers.return_value = 1
+        conf = MagicMock()
+        conf.GetAtomPosition.side_effect = lambda i: MagicMock(x=float(i), y=0.0, z=0.0)
+        mol.GetConformer.return_value = conf
+        mol.GetNumAtoms.return_value = 5
+        self.context.current_molecule = mol
+        self.context.get_selected_atom_indices.return_value = []
+
+        mw = MagicMock()
+        e3d = MagicMock()
+        e3d.selected_atoms_for_measurement = [2, 3]
+        e3d.selected_atoms_3d = set()
+        mw.edit_3d_manager = e3d
+        self.context.get_main_window.return_value = mw
+
+        self.dialog.set_ui_state({
+            "position": (0.0, -10.0, 0.0),
+            "focal_point": (0.0, 0.0, 0.0),
+            "view_up": (0.0, 0.0, 1.0),
+        })
+        self.dialog.center_on_selection()
+
+        self.assertAlmostEqual(self.dialog.spin_fp_x.value(), 2.5)
+
+    def test_collect_selected_atom_indices_merges_3d_sources(self):
+        ctx = MagicMock()
+        mw = MagicMock()
+        e3d = MagicMock()
+        e3d.selected_atoms_for_measurement = [3, 1]
+        e3d.selected_atoms_3d = {2}
+        mw.edit_3d_manager = e3d
+        ctx.get_main_window.return_value = mw
+
+        self.assertEqual(cam_mod.collect_selected_atom_indices(ctx), [1, 2, 3])
+
+    def test_collect_ignores_2d_scene_selection(self):
+        # The 2D scene selection must never move the 3D camera.
+        ctx = MagicMock()
+        ctx.get_selected_atom_indices.return_value = [7, 8, 9]
+        mw = MagicMock()
+        e3d = MagicMock()
+        e3d.selected_atoms_for_measurement = []
+        e3d.selected_atoms_3d = set()
+        mw.edit_3d_manager = e3d
+        ctx.get_main_window.return_value = mw
+
+        self.assertEqual(cam_mod.collect_selected_atom_indices(ctx), [])
+
+    def test_collect_selected_atom_indices_no_main_window(self):
+        ctx = MagicMock()
+        ctx.get_main_window.return_value = None
+        self.assertEqual(cam_mod.collect_selected_atom_indices(ctx), [])
+
+    def test_reject_releases_timer_and_window_slot(self):
+        # Esc dismisses a QDialog via reject() -> done(), never through closeEvent,
+        # so a running transition would keep driving the camera after dismissal.
+        self.dialog._anim_timer.start()
+        self.assertTrue(self.dialog._anim_timer.isActive())
+
+        self.dialog.reject()
+
+        self.assertFalse(self.dialog._anim_timer.isActive())
+        self.context.register_window.assert_called_with(
+            "camera_position_setter_dialog", None
+        )
+
+    def test_collect_selected_atom_indices_no_edit_3d_manager(self):
+        ctx = MagicMock()
+        mw = MagicMock(spec=[])  # no edit_3d_manager attribute
+        ctx.get_main_window.return_value = mw
+        self.assertEqual(cam_mod.collect_selected_atom_indices(ctx), [])
 
     def test_merge_and_clear_project_presets(self):
         self.dialog._presets = [

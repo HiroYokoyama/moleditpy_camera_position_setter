@@ -16,7 +16,7 @@
 * **Projection Modes**: Seamless toggle between Perspective and Parallel (Orthographic) projection.
 * **Target Centering**:
   * **Center on Molecule**: Auto-centers the focal point on the molecular centroid.
-  * **Center on Selection**: Centers the focal point on currently selected atoms.
+  * **Center on Selection**: Centers the focal point on the atoms selected in the **3D viewport** (MoleditPy's 3D Select — the atoms you click in the 3D view, shown with red number labels). The 2D sketch selection is intentionally ignored.
 * **Orbital Step Nudge**: Incremental rotational nudges (Yaw/Azimuth, Pitch/Elevation, Roll) by 5°, 15°, 45°, or 90°, plus fine zoom controls.
 * **Viewpoint Bookmarks & Presets**: Save, rename, apply, update, and manage named camera presets with persistence across app sessions and `.pmeprj` project files.
 * **Clipboard Integration**: Copy camera state to clipboard as formatted JSON or PyVista `[position, focal_point, view_up]` tuples, and paste directly back.

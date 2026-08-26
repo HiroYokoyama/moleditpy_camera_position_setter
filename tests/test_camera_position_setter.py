@@ -130,11 +130,14 @@ def _install_qt_stubs():
         def exec(self):
             return self.DialogCode.Accepted
 
+        def done(self, result):
+            self._result = result
+
         def accept(self):
-            pass
+            self.done(self.DialogCode.Accepted)
 
         def reject(self):
-            pass
+            self.done(self.DialogCode.Rejected)
 
     class _QLineEdit:
         def __init__(self, text=""):
