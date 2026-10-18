@@ -24,9 +24,9 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
-from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QHBoxLayout,
@@ -57,9 +57,9 @@ PLUGIN_DESCRIPTION = (
 )
 PLUGIN_CATEGORY = "View"
 PLUGIN_TAGS = ["Visualization", "Utility"]
-PLUGIN_DEPENDENCIES = ["pyvista", "PyQt6", "numpy"]
+PLUGIN_DEPENDENCIES = ["pyvista", "PySide6-Essentials", "numpy"]
 PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=3.0.0, <5.0.0"
-PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.9, <3.15"
+PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.10, <3.15"
 PLUGIN_SUPPORTED_OS = ["Windows", "macOS", "Linux", "WSL"]
 
 # Global cache for active project bookmarks

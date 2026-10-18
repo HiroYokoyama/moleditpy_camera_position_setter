@@ -18,7 +18,7 @@ When opening an Issue, please include:
 2.  Copy or symlink the plugin file into your **user plugin directory** of the main **MoleditPy** application so it is discovered automatically at startup:
     - **Windows**: `C:\Users\<YourName>\.moleditpy\plugins\`
     - **Linux / macOS**: `~/.moleditpy/plugins/`
-3.  Install development dependencies as required by the project (`pytest`, `numpy`, `pyvista`, `PyQt6`).
+3.  Install development dependencies as required by the project (`pytest`, `numpy`, `pyvista`, `PySide6`).
 
 ## 3. Coding Standards
 

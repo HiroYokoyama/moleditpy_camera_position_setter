@@ -21,10 +21,10 @@ import numpy as np
 # Install Qt stubs so tests run headlessly in any environment
 # ---------------------------------------------------------------------------
 def _install_qt_stubs():
-    if "PyQt6" in sys.modules and hasattr(sys.modules["PyQt6"], "_is_stub"):
+    if "PySide6" in sys.modules and hasattr(sys.modules["PySide6"], "_is_stub"):
         return
 
-    qt_core = types.ModuleType("PyQt6.QtCore")
+    qt_core = types.ModuleType("PySide6.QtCore")
 
     class _QCoreApplication:
         @staticmethod
@@ -57,13 +57,13 @@ def _install_qt_stubs():
     qt_core.QTimer = _QTimer
     qt_core.Qt = _Qt
 
-    pyqt6 = types.ModuleType("PyQt6")
-    pyqt6._is_stub = True
-    pyqt6.QtCore = qt_core
-    sys.modules["PyQt6"] = pyqt6
-    sys.modules["PyQt6.QtCore"] = qt_core
+    pyside6 = types.ModuleType("PySide6")
+    pyside6._is_stub = True
+    pyside6.QtCore = qt_core
+    sys.modules["PySide6"] = pyside6
+    sys.modules["PySide6.QtCore"] = qt_core
 
-    qt_gui = types.ModuleType("PyQt6.QtGui")
+    qt_gui = types.ModuleType("PySide6.QtGui")
 
     class _QClipboard:
         def __init__(self):
@@ -84,10 +84,10 @@ def _install_qt_stubs():
 
     qt_gui.QClipboard = _QClipboard
     qt_gui.QGuiApplication = _QGuiApplication
-    pyqt6.QtGui = qt_gui
-    sys.modules["PyQt6.QtGui"] = qt_gui
+    pyside6.QtGui = qt_gui
+    sys.modules["PySide6.QtGui"] = qt_gui
 
-    qt_widgets = types.ModuleType("PyQt6.QtWidgets")
+    qt_widgets = types.ModuleType("PySide6.QtWidgets")
 
     class _QSignal:
         def __init__(self):
@@ -296,15 +296,15 @@ def _install_qt_stubs():
     ]:
         setattr(qt_widgets, name, lambda *args, **kwargs: MagicMock())
 
-    pyqt6.QtWidgets = qt_widgets
-    sys.modules["PyQt6.QtWidgets"] = qt_widgets
+    pyside6.QtWidgets = qt_widgets
+    sys.modules["PySide6.QtWidgets"] = qt_widgets
 
 
 _install_qt_stubs()
 
 sys.path.insert(0, os.path.normpath(os.path.join(os.path.dirname(__file__), "..")))
 import camera_position_setter as cam_mod  # noqa: E402
-from PyQt6.QtGui import QGuiApplication  # noqa: E402
+from PySide6.QtGui import QGuiApplication  # noqa: E402
 
 
 class TestMathFunctions(unittest.TestCase):

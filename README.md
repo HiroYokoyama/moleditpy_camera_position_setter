@@ -26,7 +26,7 @@
 ## Requirements
 
 This plugin runs in the MoleditPy environment:
-* `PyQt6`
+* `PySide6`
 * `numpy`
 * `pyvista`
 
