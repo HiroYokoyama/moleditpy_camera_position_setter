@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Camera Position Setter"
-PLUGIN_VERSION = "1.2.0"
+PLUGIN_VERSION = "2.0.0a1"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Precise 3D camera controller, axis view aligner, and viewpoint manager for MoleditPy."
