@@ -12,20 +12,20 @@ from unittest.mock import MagicMock
 
 
 def _install_qt_stubs():
-    if "PyQt6" in sys.modules and hasattr(sys.modules["PyQt6"], "__file__"):
+    if "PySide6" in sys.modules and hasattr(sys.modules["PySide6"], "__file__"):
         return  # real Qt already present
 
-    pyqt6 = types.ModuleType("PyQt6")
-    qt_core = types.ModuleType("PyQt6.QtCore")
+    pyside6 = types.ModuleType("PySide6")
+    qt_core = types.ModuleType("PySide6.QtCore")
     qt_core.QCoreApplication = MagicMock()
     qt_core.QTimer = MagicMock()
     qt_core.Qt = MagicMock()
 
-    qt_gui = types.ModuleType("PyQt6.QtGui")
+    qt_gui = types.ModuleType("PySide6.QtGui")
     qt_gui.QClipboard = MagicMock()
     qt_gui.QGuiApplication = MagicMock()
 
-    qt_widgets = types.ModuleType("PyQt6.QtWidgets")
+    qt_widgets = types.ModuleType("PySide6.QtWidgets")
     for cls_name in [
         "QDialog", "QVBoxLayout", "QHBoxLayout", "QGridLayout", "QGroupBox",
         "QLabel", "QDoubleSpinBox", "QComboBox", "QPushButton", "QCheckBox",
@@ -35,10 +35,10 @@ def _install_qt_stubs():
         setattr(qt_widgets, cls_name, MagicMock())
 
     for name, mod in [
-        ("PyQt6", pyqt6),
-        ("PyQt6.QtCore", qt_core),
-        ("PyQt6.QtWidgets", qt_widgets),
-        ("PyQt6.QtGui", qt_gui),
+        ("PySide6", pyside6),
+        ("PySide6.QtCore", qt_core),
+        ("PySide6.QtWidgets", qt_widgets),
+        ("PySide6.QtGui", qt_gui),
     ]:
         sys.modules.setdefault(name, mod)
 
@@ -99,7 +99,7 @@ class TestMetadata(unittest.TestCase):
         self.assertEqual(PLUGIN_NAME, "Camera Position Setter")
 
     def test_plugin_version_is_semver(self):
-        parts = PLUGIN_VERSION.split(".")
+        parts = PLUGIN_VERSION.split("a", 1)[0].split(".")
         self.assertEqual(len(parts), 3)
         for p in parts:
             self.assertTrue(p.isdigit(), f"Non-numeric version part: {p!r}")

@@ -9,7 +9,7 @@ clipboard copy/paste, and smooth animated transitions.
 
 Source code, README, and full license (GNU GPL):
     https://github.com/HiroYokoyama/moleditpy_camera_position_setter
-Copyright (c) HiroYokoyama. Licensed under the GNU General Public License;
+Copyright (c) HiroYokoyama. Licensed under the GNU Lesser General Public License;
 see the LICENSE file in the repository above for the full terms.
 """
 
@@ -24,9 +24,9 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
-from PyQt6.QtCore import QTimer
-from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
     QHBoxLayout,
@@ -50,16 +50,16 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Camera Position Setter"
-PLUGIN_VERSION = "1.2.0"
+PLUGIN_VERSION = "2.0.0"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Precise 3D camera controller, axis view aligner, and viewpoint manager for MoleditPy."
 )
 PLUGIN_CATEGORY = "View"
 PLUGIN_TAGS = ["Visualization", "Utility"]
-PLUGIN_DEPENDENCIES = ["pyvista", "PyQt6", "numpy"]
-PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=3.0.0, <5.0.0"
-PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.9, <3.15"
+PLUGIN_DEPENDENCIES = ["pyvista", "PySide6-Essentials", "numpy"]
+PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=5.0.0, <6.0.0"
+PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.10, <3.15"
 PLUGIN_SUPPORTED_OS = ["Windows", "macOS", "Linux", "WSL"]
 
 # Global cache for active project bookmarks
