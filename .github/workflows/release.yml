@@ -59,7 +59,7 @@ jobs:
           gh release create "v$TAG" \
             --title "Camera Position Setter $TAG" \
             --generate-notes \
-            camera_position_setter.py
+            camera_position_setter.py LICENSE COPYING LICENSING.md
 
       - name: Trigger moleditpy-plugins registry update
         if: success()
