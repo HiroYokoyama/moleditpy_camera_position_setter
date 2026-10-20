@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 # --- Plugin Metadata ---
 PLUGIN_NAME = "Camera Position Setter"
-PLUGIN_VERSION = "2.0.0"
+PLUGIN_VERSION = "2.0.1"
 PLUGIN_AUTHOR = "HiroYokoyama"
 PLUGIN_DESCRIPTION = (
     "Precise 3D camera controller, axis view aligner, and viewpoint manager for MoleditPy."
@@ -59,7 +59,7 @@ PLUGIN_CATEGORY = "View"
 PLUGIN_TAGS = ["Visualization", "Utility"]
 PLUGIN_DEPENDENCIES = ["pyvista", "PySide6-Essentials", "numpy"]
 PLUGIN_SUPPORTED_MOLEDITPY_VERSION = ">=5.0.0, <6.0.0"
-PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.10, <3.15"
+PLUGIN_SUPPORTED_PYTHON_VERSION = ">=3.9, <3.15"
 PLUGIN_SUPPORTED_OS = ["Windows", "macOS", "Linux", "WSL"]
 
 # Global cache for active project bookmarks
