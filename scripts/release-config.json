@@ -1,0 +1,10 @@
+{
+  "source": "camera_position_setter.py",
+  "title": "Camera Position Setter",
+  "assets": [
+    "camera_position_setter.py",
+    "LICENSE",
+    "COPYING",
+    "LICENSING.md"
+  ]
+}
